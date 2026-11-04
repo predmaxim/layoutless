@@ -23,6 +23,12 @@ pub struct Config {
     /// Layer-shell namespaces (shell popups) that block auto-correction while
     /// open, such as the polkit password prompt.
     pub exclude_layers: Vec<String>,
+    /// Keep the keyboard layout per window: a window gets its layout back when
+    /// it's focused again, new windows start on the first layout.
+    pub per_window: bool,
+    /// With `per_window`: window classes and layer-shell namespaces that always
+    /// get the first layout, such as the Omarchy menu, where commands are typed.
+    pub first_layout_only: Vec<String>,
 }
 
 impl Default for Config {
@@ -43,6 +49,8 @@ impl Default for Config {
             .map(String::from)
             .to_vec(),
             exclude_layers: vec!["omarchy-polkit".into()],
+            per_window: false,
+            first_layout_only: vec!["omarchy-menu".into()],
         }
     }
 }

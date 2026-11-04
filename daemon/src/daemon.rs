@@ -12,6 +12,7 @@ use crate::output::{Output, VIRTUAL_HYPR_NAME};
 use crate::config::{self, Config};
 use crate::control::Subscribers;
 use crate::hotkey::{self, Hotkey};
+use crate::per_window::PerWindow;
 use crate::rules::{self, Rules};
 use crate::{control, hypr, input};
 
@@ -21,6 +22,11 @@ pub enum Msg {
     Click,
     /// Another window got focus; its class.
     FocusChanged(String),
+    /// The window that got focus, by address; right after `FocusChanged`.
+    WindowFocused(String),
+    WindowClosed(String),
+    /// The real keyboard switched to this layout index (by anyone, us included).
+    LayoutChanged(usize),
     /// Hyprland reloaded its config, which drops binds added at runtime.
     HyprConfigReloaded,
     /// A layer-shell surface (shell popup) opened (true) or closed; its namespace.
@@ -66,6 +72,7 @@ pub fn run() -> std::io::Result<()> {
     let out = Output::new()?;
     input::watch(tx.clone());
     let layouts = hypr::LayoutWatcher::start(VIRTUAL_HYPR_NAME, tx)?;
+    let per_window = PerWindow::new(layouts.current_index(), hypr::active_address().ok().filter(|a| !a.is_empty()));
     let correct_wait = release_wait();
     let hotkey = load_hotkey(&config);
     bind_hotkey(&hotkey);
@@ -78,6 +85,7 @@ pub fn run() -> std::io::Result<()> {
         auto,
         app: hypr::active_class().unwrap_or_default(),
         open_layers: Vec::new(),
+        per_window,
         config,
         hotkey,
         rules: Rules::load(),
@@ -121,7 +129,24 @@ pub fn run() -> std::io::Result<()> {
                         core.events.send(&core.state());
                     }
                 }
+                Msg::WindowFocused(addr) => {
+                    if core.config.per_window {
+                        let first_only = core.first_layout_only(&core.app);
+                        let switch = core.per_window.focus(&addr, first_only, Instant::now());
+                        core.switch_layout(switch);
+                    }
+                }
+                Msg::WindowClosed(addr) => core.per_window.close(&addr),
+                Msg::LayoutChanged(index) => {
+                    core.per_window.layout_changed(index, Instant::now());
+                    core.events.send(&core.state());
+                }
                 Msg::Layer(ns, open) => {
+                    if core.config.per_window && core.first_layout_only(&ns) {
+                        let now = Instant::now();
+                        let switch = if open { core.per_window.layer_open(now) } else { core.per_window.layer_close(now) };
+                        core.switch_layout(switch);
+                    }
                     if open {
                         core.open_layers.push(ns);
                     } else if let Some(i) = core.open_layers.iter().position(|l| *l == ns) {
@@ -223,6 +248,7 @@ struct Core {
     app: String,
     /// Namespaces of the open layer-shell surfaces.
     open_layers: Vec<String>,
+    per_window: PerWindow,
     rules: Rules,
     /// Event stream for the bar widget.
     events: Subscribers,
@@ -327,6 +353,13 @@ impl Core {
             "auto off" => self.set_auto(false),
             "auto toggle" => self.set_auto(!self.auto),
             "state" => self.state().to_string(),
+            "layout toggle" => {
+                let target = Lang::from_index(self.layouts.current_index()).other();
+                match hypr::switch_layout("all", target.index()) {
+                    Ok(()) => "ok".into(),
+                    Err(e) => format!("error: {e}"),
+                }
+            }
             "rules list" => {
                 let list: Vec<_> = self.rules.list().iter().map(rules::describe).collect();
                 serde_json::json!({ "rules": list }).to_string()
@@ -365,6 +398,19 @@ impl Core {
         self.app_excluded() || self.open_layers.iter().any(|l| self.config.exclude_layers.contains(l))
     }
 
+    fn first_layout_only(&self, name: &str) -> bool {
+        self.config.first_layout_only.iter().any(|c| c.eq_ignore_ascii_case(name.trim()))
+    }
+
+    /// Switch for the per-window layout, if it asked to.
+    fn switch_layout(&self, index: Option<usize>) {
+        if let Some(index) = index {
+            if let Err(e) = hypr::switch_layout("all", index) {
+                eprintln!("per-window layout: {e}");
+            }
+        }
+    }
+
     fn app_excluded(&self) -> bool {
         self.config.exclude_apps.iter().any(|a| a.eq_ignore_ascii_case(&self.app))
     }
@@ -399,6 +445,7 @@ impl Core {
         serde_json::json!({
             "event": "state",
             "auto": self.auto,
+            "layout": Lang::from_index(self.layouts.current_index()),
             "rules": self.rules.list().len(),
             "flip_key": self.hotkey.spec,
             "learn_threshold": self.config.learn_threshold.max(1),
@@ -675,6 +722,9 @@ impl Core {
             ),
             Msg::Click => eprintln!("[dbg {t:9.1}] click → reset"),
             Msg::FocusChanged(class) => eprintln!("[dbg {t:9.1}] focus → {class:?}, reset"),
+            Msg::WindowFocused(addr) => eprintln!("[dbg {t:9.1}] window {addr} focused"),
+            Msg::WindowClosed(addr) => eprintln!("[dbg {t:9.1}] window {addr} closed"),
+            Msg::LayoutChanged(i) => eprintln!("[dbg {t:9.1}] layout → {i}"),
             Msg::Layer(ns, open) => eprintln!("[dbg {t:9.1}] layer {ns} {}", if *open { "open" } else { "closed" }),
             Msg::Command(c, _) => eprintln!("[dbg {t:9.1}] command {c:?}"),
             Msg::HyprConfigReloaded => eprintln!("[dbg {t:9.1}] hyprland config reloaded → rebind hotkey, re-read repeat delay"),

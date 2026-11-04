@@ -5,8 +5,10 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 
-// Layoutless bar widget: a keyboard icon (dimmed while auto-correction is
-// paused) and a panel with the auto toggle and the learned words. All state
+// Layoutless bar widget: the flag of the current layout (dimmed while
+// auto-correction is paused; a keyboard icon while the daemon is away) that
+// switches the layout on click, and a panel with the auto toggle and the
+// learned words on right click. All state
 // lives in the layoutless daemon; this widget only talks to it through the
 // `layoutless` CLI: `subscribe` for live state, `ctl` for edits. Commands go
 // to `ctl` on stdin, never as arguments: words in a command line are visible
@@ -23,6 +25,8 @@ Panel {
   // connected (daemon stopped or restarting).
   property bool daemonUp: false
   property bool auto: false
+  // "en" or "ru", the current layout.
+  property string layout: ""
   property int ruleCount: 0
   property string flipKey: "ALT + SPACE"
   // The focused window's class (the panel itself never takes it) and the
@@ -91,6 +95,7 @@ Panel {
         root.daemonUp = true
         if (ev.event === "state") {
           root.auto = ev.auto === true
+          root.layout = ev.layout || ""
           if (ev.flip_key) root.flipKey = ev.flip_key
           if (ev.learn_threshold) root.learnThreshold = ev.learn_threshold
           root.app = ev.app || ""
@@ -141,18 +146,25 @@ Panel {
     onExited: root.refresh()
   }
 
-  BarIconButton {
+  readonly property var flags: ({ en: "🇺🇸", ru: "🇷🇺" })
+  readonly property string flag: root.daemonUp ? (root.flags[root.layout] || "") : ""
+
+  WidgetButton {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "󰌌"
+    text: root.flag || "󰌌"
+    // Flags read too small at body size, so give them room.
+    fontSize: root.flag ? Math.round(Style.font.body * 1.17) : Style.font.body
+    horizontalMargin: Style.spacing.rowPaddingX / 2
     dimmed: !root.daemonUp || !root.auto
     tooltipText: !root.daemonUp
       ? "Layoutless: daemon not running"
-      : "Layoutless: auto-correction " + (root.auto ? "on" : "paused") + "\nRight click to " + (root.auto ? "pause" : "resume")
+      : (root.layout === "ru" ? "Russian" : "English") + ", auto-correction " + (root.auto ? "on" : "paused")
+        + "\nClick to switch the layout, right click for settings"
     onPressed: function(b) {
-      if (b === Qt.RightButton) root.run("auto toggle")
-      else root.toggle()
+      if (b === Qt.RightButton || !root.daemonUp) root.toggle()
+      else root.run("layout toggle")
     }
   }
 
@@ -183,7 +195,7 @@ Panel {
           width: parent.width
           wrapMode: Text.Wrap
           textFormat: Text.PlainText
-          text: "The layoutless daemon is not running.\nStart it with: systemctl --user start layoutless"
+          text: "The layoutless daemon is not running.\nStart it with: systemctl --user start layoutless\n(installed with --system: sudo systemctl start layoutless@$USER)"
           color: root.foreground
           font.family: root.fontFamily
           font.pixelSize: Style.font.body

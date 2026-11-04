@@ -42,6 +42,13 @@ pub fn eval(code: &str) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Address of the focused window as in events (no `0x`), "" if none.
+pub fn active_address() -> std::io::Result<String> {
+    let reply = command("j/activewindow")?;
+    let v: serde_json::Value = serde_json::from_str(&reply).map_err(std::io::Error::other)?;
+    Ok(v["address"].as_str().unwrap_or("").trim_start_matches("0x").to_string())
+}
+
 /// Class of the focused window ("" if none).
 pub fn active_class() -> std::io::Result<String> {
     let reply = command("j/activewindow")?;
@@ -120,7 +127,8 @@ pub struct LayoutWatcher {
 impl LayoutWatcher {
     /// `watched` is our virtual keyboard: it is kept on the same layout as the
     /// real keyboards, and `wait_event` waits for its layout events. Focus
-    /// changes and the socket closing are sent to `tx`.
+    /// changes, closed windows, layout changes of the real keyboard and the
+    /// socket closing are sent to `tx`.
     pub fn start(watched: &'static str, tx: Sender<Msg>) -> std::io::Result<Self> {
         let snap = sync(watched)?;
         let reference = snap.reference;
@@ -136,6 +144,15 @@ impl LayoutWatcher {
                 if let Some(rest) = line.strip_prefix("activewindow>>") {
                     let class = rest.split(',').next().unwrap_or("").to_string();
                     let _ = tx.send(Msg::FocusChanged(class));
+                    continue;
+                }
+                // Comes right after activewindow (the class) for the same window.
+                if let Some(addr) = line.strip_prefix("activewindowv2>>") {
+                    let _ = tx.send(Msg::WindowFocused(addr.to_string()));
+                    continue;
+                }
+                if let Some(addr) = line.strip_prefix("closewindow>>") {
+                    let _ = tx.send(Msg::WindowClosed(addr.to_string()));
                     continue;
                 }
                 if line.starts_with("configreloaded>>") {
@@ -159,7 +176,10 @@ impl LayoutWatcher {
                 } else if device == reference {
                     // Layout names aren't indices; re-query to get the index.
                     match sync(watched) {
-                        Ok(snap) => m.lock().unwrap().index = snap.reference_index,
+                        Ok(snap) => {
+                            m.lock().unwrap().index = snap.reference_index;
+                            let _ = tx.send(Msg::LayoutChanged(snap.reference_index));
+                        }
                         Err(e) => eprintln!("layout sync failed: {e}"),
                     }
                 }

@@ -14,7 +14,8 @@ Type without thinking about the layout. When a word comes out in the wrong one (
 - **Force flip with `Alt+Space`.** If layoutless guessed wrong or missed a word, press `Alt+Space` to flip the last word. Right after an auto-correction, `Alt+Space` undoes it instead.
 - **Learns your words.** If you flip the same word by hand twice, layoutless remembers which layout it belongs to. For example, `next` typed in the Russian layout comes out as `туче`, which is a valid Russian word, so a dictionary alone would never flip it. After two manual flips it always does. Undoing an auto-correction twice teaches it to leave that word alone.
 - **Works everywhere you type.** It works in browsers, terminals, Electron and JetBrains apps, because it uses only Backspace and replays the same physical keys after switching the layout.
-- **Omarchy bar widget.** A keyboard icon, dimmed while auto-correction is paused. Its panel pauses auto-correction, turns it off for the current app, and edits the learned words.
+- **Layout per window** (`per_window = true`). Each window gets its layout back when it's focused again; new windows start on the first layout. The Omarchy menu always opens in the first layout. The same daemon switches the layout for corrections and for focus changes, so the two never race.
+- **Omarchy bar widget.** The flag of the current layout, dimmed while auto-correction is paused; a click switches the layout. Its panel pauses auto-correction, turns it off for the current app, and edits the learned words.
 
 Supported layouts: `us` + `ru` for now. The design keeps layout pairs pluggable.
 
@@ -99,9 +100,10 @@ omarchy plugin add https://github.com/kladaFOX/layoutless --enable
 
 ![The bar widget panel](preview.png)
 
-Left click opens the panel: pause auto-correction, turn it off for the current app, and
-find, add, forget or move learned words to the other layout. Right click pauses or resumes
-auto-correction. The icon is dimmed while paused.
+The widget shows the flag of the current layout (a keyboard icon while the daemon isn't
+running) and replaces a separate layout widget. Left click switches the layout. Right click
+opens the panel: pause auto-correction, turn it off for the current app, and find, add,
+forget or move learned words to the other layout. The flag is dimmed while paused.
 
 ## Uninstall
 
@@ -129,6 +131,8 @@ exclude_apps = [                 # window classes, as in `hyprctl activewindow`
   "gcr-prompter", "pinentry-qt", "pinentry-gtk",
 ]
 exclude_layers = ["omarchy-polkit"]  # shell popups, e.g. the polkit password prompt
+per_window = false               # keep the layout per window
+first_layout_only = ["omarchy-menu"] # with per_window: classes and popups always in the first layout
 ```
 
 Commands: `layoutless auto on|off|toggle`, `layoutless status`, `layoutless flip`,

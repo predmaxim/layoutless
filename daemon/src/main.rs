@@ -13,6 +13,7 @@ mod hypr;
 mod input;
 mod keymap;
 mod output;
+mod per_window;
 mod private;
 mod rules;
 
