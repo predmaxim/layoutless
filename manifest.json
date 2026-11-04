@@ -5,14 +5,14 @@
   "version": "0.1.4",
   "author": "kladafox",
   "license": "MIT",
-  "description": "Automatic us/ru keyboard layout correction, Punto Switcher style, and the layout kept per window. Bar flag of the current layout: click switches it, right click opens auto-correction and the learned words.",
+  "description": "Automatic us/ru keyboard layout correction, Punto Switcher style, and the layout kept per window. Bar flag of the current layout: click switches it, right click opens auto-correction, the layout per window, the learned words and the ignored apps.",
   "kinds": ["bar-widget"],
   "entryPoints": {
     "barWidget": "BarWidget.qml"
   },
   "barWidget": {
     "displayName": "Layoutless",
-    "description": "Flag of the current layout, dimmed while auto-correction is paused. Left click switches the layout; right click opens the panel: pause auto-correction, edit the learned words.",
+    "description": "Flag of the current layout, dimmed while auto-correction is paused. Left click switches the layout; right click opens the panel: pause auto-correction, the layout per window, the learned words and the ignored apps.",
     "category": "Input",
     "allowMultiple": false,
     "defaultSection": "right"
