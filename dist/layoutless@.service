@@ -1,0 +1,18 @@
+[Unit]
+Description=layoutless for %i: us/ru keyboard layout correction
+Documentation=https://github.com/kladaFOX/layoutless
+# Before login it keeps waiting for Hyprland; never give up on restarts.
+StartLimitIntervalSec=0
+
+[Service]
+User=%i
+# The input group for the daemon only, not for the user's other programs.
+SupplementaryGroups=input
+# A system service doesn't get the session environment: wait for the user's Hyprland and take
+# its newest instance. The daemon exits when Hyprland goes away; the restart waits for the next.
+ExecStart=/bin/sh -c 'r=/run/user/$$(id -u); until s=$$(ls -t "$$r/hypr" 2>/dev/null | head -n 1) && [ -n "$$s" ]; do sleep 2; done; XDG_RUNTIME_DIR=$$r DBUS_SESSION_BUS_ADDRESS=unix:path=$$r/bus HYPRLAND_INSTANCE_SIGNATURE=$$s exec /usr/local/bin/layoutless'
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

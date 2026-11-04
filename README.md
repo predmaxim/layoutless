@@ -67,6 +67,23 @@ user service). Before using `sudo` it shows what it will do and asks: a udev rul
 back in once after the first install; the daemon starts by itself afterwards. Run it again
 after `git pull` to update.
 
+#### Without the `input` group
+
+```bash
+./install.sh --system
+```
+
+The `input` group gives every program running as you access to all keyboards. With `--system`
+the daemon runs as a system service `layoutless@$USER`: as your user, but with the `input` group
+for itself only (`SupplementaryGroups=input`), so your other programs can't read the keyboard or
+type through `/dev/uinput`. No log out is needed. The binary goes to `/usr/local/bin/layoutless`,
+owned by root, so a program running as you can't replace what runs with the group; updating
+after `git pull` therefore needs sudo again (`./install.sh --system`). The service waits for your
+Hyprland and attaches to its newest instance. The separation relies on
+`kernel.yama.ptrace_scope` being 1 or higher (the Arch default), so programs running as you
+can't attach to the daemon. A previous user-service install is removed. `./install.sh --uninstall`
+removes either kind.
+
 An AUR package is prepared in `packaging/aur/` and will be published once AUR registration
 reopens.
 
