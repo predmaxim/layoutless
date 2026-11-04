@@ -21,13 +21,15 @@ use std::process::ExitCode;
 
 const USAGE: &str = "usage: layoutless [daemon | flip | auto on|off|toggle | status | reload
                   | rules [list [--json] | add WORD | rm WORD | set KEYS en|ru]
-                  | exclude add|rm CLASS | ctl (command on stdin) | subscribe | eval FILE...]";
+                  | exclude add|rm CLASS | per-window on|off|toggle
+                  | ctl (command on stdin) | subscribe | eval FILE...]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
         [] | ["daemon"] => daemon::run(),
-        ["flip"] | ["status"] | ["state"] | ["reload"] | ["auto", "on" | "off" | "toggle"] => {
+        ["flip"] | ["status"] | ["state"] | ["reload"] | ["auto", "on" | "off" | "toggle"]
+        | ["per-window", "on" | "off" | "toggle"] => {
             control::request(&args.join(" ")).map(|reply| println!("{reply}"))
         }
         ["rules"] | ["rules", "list"] => control::request("rules list").and_then(|r| print_rules(&r)),

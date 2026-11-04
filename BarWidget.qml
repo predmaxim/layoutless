@@ -27,6 +27,8 @@ Panel {
   property bool auto: false
   // "en" or "ru", the current layout.
   property string layout: ""
+  // Each window keeps its own layout (`per_window` in the config).
+  property bool perWindow: false
   property int ruleCount: 0
   property string flipKey: "ALT + SPACE"
   // The focused window's class (the panel itself never takes it) and the
@@ -96,6 +98,7 @@ Panel {
         if (ev.event === "state") {
           root.auto = ev.auto === true
           root.layout = ev.layout || ""
+          root.perWindow = ev.per_window === true
           if (ev.flip_key) root.flipKey = ev.flip_key
           if (ev.learn_threshold) root.learnThreshold = ev.learn_threshold
           root.app = ev.app || ""
@@ -221,6 +224,17 @@ Panel {
           foreground: root.foreground
           fontFamily: root.fontFamily
           onClicked: root.run("exclude " + (root.appExcluded ? "rm " : "add ") + root.app)
+        }
+
+        Toggle {
+          visible: root.daemonUp
+          width: parent.width
+          label: "Layout per window"
+          description: "A window gets its layout back on focus, new ones start on English"
+          checked: root.perWindow
+          foreground: root.foreground
+          fontFamily: root.fontFamily
+          onClicked: root.run("per-window toggle")
         }
 
         PanelSeparator { visible: root.daemonUp; foreground: root.foreground }

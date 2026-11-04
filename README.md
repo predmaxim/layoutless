@@ -15,7 +15,7 @@ Type without thinking about the layout. When a word comes out in the wrong one (
 - **Learns your words.** If you flip the same word by hand twice, layoutless remembers which layout it belongs to. For example, `next` typed in the Russian layout comes out as `туче`, which is a valid Russian word, so a dictionary alone would never flip it. After two manual flips it always does. Undoing an auto-correction twice teaches it to leave that word alone.
 - **Works everywhere you type.** It works in browsers, terminals, Electron and JetBrains apps, because it uses only Backspace and replays the same physical keys after switching the layout.
 - **Layout per window** (`per_window = true`). Each window gets its layout back when it's focused again; new windows start on the first layout. The Omarchy menu always opens in the first layout. The same daemon switches the layout for corrections and for focus changes, so the two never race.
-- **Omarchy bar widget.** The flag of the current layout, dimmed while auto-correction is paused; a click switches the layout. Its panel pauses auto-correction, turns it off for the current app, and edits the learned words.
+- **Omarchy bar widget.** The flag of the current layout, dimmed while auto-correction is paused; a click switches the layout. Its panel pauses auto-correction, turns it off for the current app, turns the layout per window on and off, and edits the learned words.
 
 Supported layouts: `us` + `ru` for now. The design keeps layout pairs pluggable.
 
@@ -102,8 +102,9 @@ omarchy plugin add https://github.com/kladaFOX/layoutless --enable
 
 The widget shows the flag of the current layout (a keyboard icon while the daemon isn't
 running) and replaces a separate layout widget. Left click switches the layout. Right click
-opens the panel: pause auto-correction, turn it off for the current app, and find, add,
-forget or move learned words to the other layout. The flag is dimmed while paused.
+opens the panel: pause auto-correction, turn it off for the current app, turn the layout per
+window on and off, and find, add, forget or move learned words to the other layout. The flag
+is dimmed while paused.
 
 ## Uninstall
 
@@ -136,7 +137,8 @@ first_layout_only = ["omarchy-menu"] # with per_window: classes and popups alway
 ```
 
 Commands: `layoutless auto on|off|toggle`, `layoutless status`, `layoutless flip`,
-`layoutless rules [list | add WORD | rm WORD]`, `layoutless exclude add|rm CLASS`.
+`layoutless rules [list | add WORD | rm WORD]`, `layoutless exclude add|rm CLASS`,
+`layoutless per-window on|off|toggle` (saved to `per_window` in the config).
 
 Learned words live in `~/.local/share/layoutless/rules.json`. `rules add next` makes
 `next` always come out as `next` (typing `туче` turns into it); `rules add привет` does the

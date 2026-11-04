@@ -72,7 +72,7 @@ pub fn run() -> std::io::Result<()> {
     let out = Output::new()?;
     input::watch(tx.clone());
     let layouts = hypr::LayoutWatcher::start(VIRTUAL_HYPR_NAME, tx)?;
-    let per_window = PerWindow::new(layouts.current_index(), hypr::active_address().ok().filter(|a| !a.is_empty()));
+    let per_window = per_window_from_now(layouts.current_index());
     let correct_wait = release_wait();
     let hotkey = load_hotkey(&config);
     bind_hotkey(&hotkey);
@@ -352,6 +352,9 @@ impl Core {
             "auto on" => self.set_auto(true),
             "auto off" => self.set_auto(false),
             "auto toggle" => self.set_auto(!self.auto),
+            "per-window on" => self.set_per_window(true),
+            "per-window off" => self.set_per_window(false),
+            "per-window toggle" => self.set_per_window(!self.config.per_window),
             "state" => self.state().to_string(),
             "layout toggle" => {
                 let target = Lang::from_index(self.layouts.current_index()).other();
@@ -427,7 +430,7 @@ impl Core {
             Some(("rm", class)) => apps.retain(|a| !a.eq_ignore_ascii_case(class.trim())),
             _ => return "usage: exclude add CLASS | exclude rm CLASS".into(),
         }
-        if let Err(e) = config::save_exclude_apps(&apps) {
+        if let Err(e) = config::save("exclude_apps", apps.iter().map(String::as_str).collect::<toml_edit::Array>()) {
             return format!("error: {e}");
         }
         self.config = config::load();
@@ -441,6 +444,20 @@ impl Core {
         format!("auto {}", if on { "on" } else { "off" })
     }
 
+    /// Turn the per-window layout on or off and keep it in the config file.
+    fn set_per_window(&mut self, on: bool) -> String {
+        if let Err(e) = config::save("per_window", on) {
+            return format!("error: {e}");
+        }
+        self.config = config::load();
+        if on {
+            // Focus changes weren't followed while it was off: start over.
+            self.per_window = per_window_from_now(self.layouts.current_index());
+        }
+        self.events.send(&self.state());
+        format!("per-window {}", if self.config.per_window { "on" } else { "off" })
+    }
+
     fn state(&self) -> serde_json::Value {
         serde_json::json!({
             "event": "state",
@@ -452,6 +469,7 @@ impl Core {
             "app": self.app,
             "app_excluded": self.app_excluded(),
             "exclude_apps": self.config.exclude_apps,
+            "per_window": self.config.per_window,
         })
     }
 
@@ -780,4 +798,9 @@ fn release_wait() -> Duration {
         .unwrap_or(Duration::from_millis(250))
         .saturating_sub(REPEAT_MARGIN)
         .max(Duration::from_millis(50))
+}
+
+/// Per-window layout memory starting from the window focused now.
+fn per_window_from_now(current: usize) -> PerWindow {
+    PerWindow::new(current, hypr::active_address().ok().filter(|a| !a.is_empty()))
 }

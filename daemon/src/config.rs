@@ -79,10 +79,10 @@ pub fn load() -> Config {
     }
 }
 
-/// Write `exclude_apps` into the config file, keeping everything else in it
-/// (comments included). Creates the file if needed. A file that doesn't
-/// parse is left alone and reported.
-pub fn save_exclude_apps(apps: &[String]) -> std::io::Result<()> {
+/// Write one key (`exclude_apps`, `per_window`) into the config file, keeping
+/// everything else in it (comments included). Creates the file if needed. A
+/// file that doesn't parse is left alone and reported.
+pub fn save(key: &str, value: impl Into<toml_edit::Value>) -> std::io::Result<()> {
     let path = path().ok_or_else(|| std::io::Error::other("no config directory"))?;
     let text = match std::fs::read_to_string(&path) {
         Ok(t) => t,
@@ -92,10 +92,6 @@ pub fn save_exclude_apps(apps: &[String]) -> std::io::Result<()> {
     let mut doc: toml_edit::DocumentMut = text
         .parse()
         .map_err(|e| std::io::Error::other(format!("{}: {e}", path.display())))?;
-    let mut list = toml_edit::Array::new();
-    for app in apps {
-        list.push(app.as_str());
-    }
-    doc["exclude_apps"] = toml_edit::value(list);
+    doc[key] = toml_edit::value(value);
     crate::private::write(&path, &doc.to_string())
 }
