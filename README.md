@@ -15,7 +15,7 @@ Type without thinking about the layout. When a word comes out in the wrong one (
 - **Learns your words.** If you flip the same word by hand twice, layoutless remembers which layout it belongs to. For example, `next` typed in the Russian layout comes out as `туче`, which is a valid Russian word, so a dictionary alone would never flip it. After two manual flips it always does. Undoing an auto-correction twice teaches it to leave that word alone.
 - **Works everywhere you type.** It works in browsers, terminals, Electron and JetBrains apps, because it uses only Backspace and replays the same physical keys after switching the layout.
 - **Layout per window** (`per_window = true`). Each window gets its layout back when it's focused again; new windows start on the first layout. The Omarchy menu always opens in the first layout. The same daemon switches the layout for corrections and for focus changes, so the two never race.
-- **Omarchy bar widget.** The flag of the current layout, dimmed while auto-correction is paused; a click switches the layout. Its panel pauses auto-correction and turns the layout per window on and off; two buttons with counts open the learned words (find, add, forget) and the ignored apps (with a toggle for the current app) in windows in the middle of the screen. The interface follows the system language (English, Russian).
+- **Omarchy bar widget.** The flag of the current layout, dimmed while auto-correction is paused; a click switches the layout. Its panel has the flag and the auto-correction switch in the header and turns the layout per window on and off; two buttons with counts open the learned words (find, add, forget) and the ignored apps (with a toggle for the current app) in windows in the middle of the screen. The interface follows the system language (English, Russian).
 
 Supported layouts: `us` + `ru` for now. The design keeps layout pairs pluggable.
 
@@ -102,7 +102,8 @@ omarchy plugin add https://github.com/kladaFOX/layoutless --enable
 
 The widget shows the flag of the current layout (a keyboard icon while the daemon isn't
 running) and replaces a separate layout widget. Left click switches the layout. Right click
-opens the panel: pause auto-correction and turn the layout per window on and off. The two
+opens the panel: the flag, the state and the auto-correction switch in the header, then the
+layout per window toggle. The two
 buttons below show how many learned words and ignored apps there are and open each list in a
 window in the middle of the screen: the learned words with the field that finds and adds them,
 the ignored apps with the toggle for the current app. The flag is dimmed while paused. The text

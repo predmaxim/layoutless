@@ -237,16 +237,30 @@ Panel {
           font.pixelSize: Style.font.body
         }
 
-        Toggle {
-          visible: root.daemonUp
-          width: parent.width
-          label: root.tr("Auto-correction")
-          description: root.tr("Retype words typed in the wrong layout")
-          checked: root.auto
+        // The flag of the current layout, the state, and the auto-correction
+        // switch at the right edge, like the other panels.
+        PanelHero {
+          title: root.tr("Keyboard layout")
+          meta: !root.daemonUp ? root.tr("Daemon not running")
+            : root.auto ? root.tr("Auto-correction on") : root.tr("Auto-correction paused")
           foreground: root.foreground
           fontFamily: root.fontFamily
-          onClicked: root.run("auto toggle")
+          iconComponent: Text {
+            text: root.flag || "󰌌"
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.display
+          }
+          trailingControl: ToggleSwitch {
+            visible: root.daemonUp
+            checked: root.auto
+            foreground: root.foreground
+            onToggled: root.run("auto toggle")
+            PanelToolTip { visible: parent.containsMouse; text: root.auto ? root.tr("Pause auto-correction") : root.tr("Turn auto-correction on") }
+          }
         }
+
+        PanelSeparator { foreground: root.foreground }
 
         Toggle {
           visible: root.daemonUp
