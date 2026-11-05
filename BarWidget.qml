@@ -7,8 +7,8 @@ import qs.Commons
 import qs.Ui
 import "I18n.js" as I18n
 
-// Layoutless bar widget: the flag of the current layout (dimmed while
-// auto-correction is paused; a keyboard icon while the daemon is away) that
+// Layoutless bar widget: the flag of the current layout (a dimmed keyboard
+// icon while the daemon is away) that
 // switches the layout on click, and a panel on right click: the auto and
 // per-window toggles and buttons that open the learned words and the ignored
 // apps, each in a window in the middle of the screen. All state
@@ -66,6 +66,15 @@ Panel {
 
   // Row cursor, per the CursorSurface contract: hover moves it.
   property int cursorIndex: -1
+  // The panel rows for the keyboard: 0 auto-correction, 1 layout per window,
+  // 2 learned words, 3 ignored apps; -1 none yet.
+  property int panelCursor: -1
+  function panelActivate(i) {
+    if (i === 0) root.run("auto toggle")
+    else if (i === 1) root.run("per-window toggle")
+    else if (i === 2) root.showList("words")
+    else if (i === 3) root.showList("apps")
+  }
 
   // The word as it belongs, and how it gets typed by mistake.
   function wordOf(rule) { return rule.lang === "en" ? rule.en : rule.ru }
@@ -107,7 +116,7 @@ Panel {
     else root.closeList()
   }
 
-  onOpenedChanged: if (opened) Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+  onOpenedChanged: if (opened) { root.panelCursor = -1; Qt.callLater(function() { keyCatcher.forceActiveFocus() }) }
   onListChanged: {
     if (list === "words") Qt.callLater(function() { addField.forceActiveFocus() })
     else if (list === "apps") Qt.callLater(function() { listKeys.forceActiveFocus() })
@@ -196,7 +205,9 @@ Panel {
     // Flags read too small at body size, so give them room.
     fontSize: root.flag ? Math.round(Style.font.body * 1.17) : Style.font.body
     horizontalMargin: Style.spacing.rowPaddingX / 2
-    dimmed: !root.daemonUp || !root.auto
+    // Dimmed only without the daemon: paused auto-correction is one feature
+    // off, the layout still works.
+    dimmed: !root.daemonUp
     tooltipText: !root.daemonUp
       ? root.tr("Layoutless: daemon not running")
       : (root.auto ? root.tr("Layout: %1, auto-correction on", root.langName) : root.tr("Layout: %1, auto-correction paused", root.langName))
@@ -222,6 +233,11 @@ Panel {
       anchors.fill: parent
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
+      onMoveRequested: function(dx, dy) {
+        if (!root.daemonUp || !dy) return
+        root.panelCursor = root.panelCursor < 0 ? 0 : Math.max(0, Math.min(3, root.panelCursor + dy))
+      }
+      onActivateRequested: if (root.daemonUp && root.panelCursor >= 0) root.panelActivate(root.panelCursor)
 
       Column {
         id: column
@@ -239,8 +255,9 @@ Panel {
           font.pixelSize: Style.font.body
         }
 
-        // The flag of the current layout, the state, and the auto-correction
-        // switch at the right edge, like the other panels.
+        // The flag of the current layout and the state. No switch at the
+        // right edge: auto-correction is one feature, not the whole plugin,
+        // so it is a row below.
         PanelHero {
           title: root.tr("Keyboard layout")
           meta: !root.daemonUp ? root.tr("Daemon not running")
@@ -253,13 +270,6 @@ Panel {
             font.family: root.fontFamily
             font.pixelSize: Style.font.display
           }
-          trailingControl: ToggleSwitch {
-            visible: root.daemonUp
-            checked: root.auto
-            foreground: root.foreground
-            onToggled: root.run("auto toggle")
-            PanelToolTip { visible: parent.containsMouse; text: root.auto ? root.tr("Pause auto-correction") : root.tr("Turn auto-correction on") }
-          }
         }
 
         PanelSeparator { foreground: root.foreground }
@@ -267,12 +277,27 @@ Panel {
         Toggle {
           visible: root.daemonUp
           width: parent.width
+          label: root.tr("Auto-correction")
+          description: root.tr("A word typed in the wrong layout is retyped after the space")
+          checked: root.auto
+          hasCursor: root.panelCursor === 0
+          foreground: root.foreground
+          fontFamily: root.fontFamily
+          onClicked: root.run("auto toggle")
+          onHovered: function(h) { if (h) root.panelCursor = 0 }
+        }
+
+        Toggle {
+          visible: root.daemonUp
+          width: parent.width
           label: root.tr("Layout per window")
           description: root.tr("A window gets its layout back on focus, new ones start on English")
           checked: root.perWindow
+          hasCursor: root.panelCursor === 1
           foreground: root.foreground
           fontFamily: root.fontFamily
           onClicked: root.run("per-window toggle")
+          onHovered: function(h) { if (h) root.panelCursor = 1 }
         }
 
         Button {
@@ -282,9 +307,11 @@ Panel {
           bordered: true
           iconText: "󰗊"
           text: root.tr("Learned words") + " · " + root.ruleCount
+          hasCursor: root.panelCursor === 2
           foreground: root.foreground
           fontFamily: root.fontFamily
           onClicked: root.showList("words")
+          onHovered: function(h) { if (h) root.panelCursor = 2 }
         }
 
         Button {
@@ -294,9 +321,11 @@ Panel {
           bordered: true
           iconText: "󰜺"
           text: root.tr("Ignored apps") + " · " + root.excludeApps.length
+          hasCursor: root.panelCursor === 3
           foreground: root.foreground
           fontFamily: root.fontFamily
           onClicked: root.showList("apps")
+          onHovered: function(h) { if (h) root.panelCursor = 3 }
         }
 
         Text {
