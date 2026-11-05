@@ -18,6 +18,8 @@ import "I18n.js" as I18n
 // to every local user through `ps`.
 Panel {
   id: root
+  // Fixed status colours (FixedColors.qml): a theme's red can be any colour.
+  readonly property QtObject fixedColors: FixedColors {}
   moduleName: "kladafox.layoutless"
   ipcTarget: "kladafox.layoutless"
 
@@ -303,7 +305,7 @@ Panel {
           wrapMode: Text.Wrap
           textFormat: Text.PlainText
           text: root.lastError
-          color: root.bar ? root.bar.urgent : Color.urgent
+          color: root.fixedColors.red
           font.family: root.fontFamily
           font.pixelSize: Style.font.bodySmall
         }
@@ -420,7 +422,7 @@ Panel {
             wrapMode: Text.Wrap
             textFormat: Text.PlainText
             text: root.lastError
-            color: root.bar ? root.bar.urgent : Color.urgent
+            color: root.fixedColors.red
             font.family: root.fontFamily
             font.pixelSize: Style.font.body
           }
@@ -535,7 +537,7 @@ Panel {
                 PanelActionButton {
                   iconText: "󰆴"
                   foreground: root.dim
-                  hoverColor: root.bar ? root.bar.urgent : Color.urgent
+                  hoverColor: root.fixedColors.red
                   fontFamily: root.fontFamily
                   onHovered: function(on) { row.hotButtons += on ? 1 : -1 }
                   onClicked: root.run("rules rm " + root.wordOf(row.modelData))
@@ -606,7 +608,7 @@ Panel {
                 anchors.verticalCenter: parent.verticalCenter
                 iconText: "󰆴"
                 foreground: root.dim
-                hoverColor: root.bar ? root.bar.urgent : Color.urgent
+                hoverColor: root.fixedColors.red
                 fontFamily: root.fontFamily
                 onClicked: root.run("exclude rm " + appRow.modelData)
               }

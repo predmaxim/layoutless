@@ -149,6 +149,14 @@ Learned words live in `~/.local/share/layoutless/rules.json`. `rules add next` m
 `next` always come out as `next` (typing `туче` turns into it); `rules add привет` does the
 opposite for a Russian word.
 
+
+## Colours
+
+Status colours (red, orange) are fixed rather than the theme's, whose red or
+yellow can be any colour: `FixedColors.qml` reads them from
+`~/.config/omarchy/predmaxim/palette.json` (`{"red": "#e5534b", ...}`) and
+falls back to the theme's alert colour without that file.
+
 ## License
 
 MIT for the code. The bundled word lists in `daemon/data/` are derived from
