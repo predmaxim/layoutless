@@ -73,63 +73,43 @@ pub fn repeat_delay() -> std::io::Result<Duration> {
 }
 
 struct Snapshot {
-    /// The real keyboard the current layout is read from.
-    reference: String,
+    /// Layout index of the keyboard the current layout is read from.
     reference_index: usize,
     watched_index: Option<usize>,
 }
 
-/// Read layout indices from `hyprctl devices`.
+/// The keyboard the current layout is read from: `preferred` while it is
+/// plugged in, else the first real keyboard.
 ///
 /// Don't use the keyboard flagged `main`: with fcitx5 running, `main` is its
 /// virtual keyboard, which `switchxkblayout all` doesn't touch. Don't use our
 /// own virtual keyboard either: it starts at index 0, and `switchxkblayout all
 /// next` cycles each device separately, so it can be out of sync.
-fn snapshot(watched: &str) -> std::io::Result<Snapshot> {
+fn pick_reference<'a>(kbds: &'a [serde_json::Value], preferred: &str) -> Option<&'a serde_json::Value> {
+    kbds.iter().find(|k| !preferred.is_empty() && k["name"] == preferred).or_else(|| {
+        kbds.iter().find(|k| {
+            let name = k["name"].as_str().unwrap_or("");
+            !name.contains("virtual") && name.ends_with("keyboard")
+        })
+    })
+}
+
+/// Read layout indices from `hyprctl devices`.
+fn snapshot(watched: &str, preferred: &str) -> std::io::Result<Snapshot> {
     let reply = command("j/devices")?;
     let v: serde_json::Value = serde_json::from_str(&reply).map_err(std::io::Error::other)?;
     let kbds = v["keyboards"].as_array().cloned().unwrap_or_default();
     let index = |k: &serde_json::Value| k["active_layout_index"].as_u64().unwrap_or(0) as usize;
-    let reference = kbds
-        .iter()
-        .find(|k| {
-            let name = k["name"].as_str().unwrap_or("");
-            !name.contains("virtual") && name.ends_with("keyboard")
-        })
-        .ok_or_else(|| std::io::Error::other("no real keyboard found"))?;
+    let reference = pick_reference(&kbds, preferred).ok_or_else(|| std::io::Error::other("no real keyboard found"))?;
     Ok(Snapshot {
-        reference: reference["name"].as_str().unwrap_or("").to_string(),
         reference_index: index(reference),
         watched_index: kbds.iter().find(|k| k["name"] == watched).map(index),
     })
 }
 
-/// The layout to give every keyboard when `device` is on another one than the
-/// reference: a group switch (Alt+Alt) changes only the keyboard it was typed
-/// on, so with an external keyboard the reference never saw it.
-fn follow_index(kbds: &[serde_json::Value], device: &str, reference: &str) -> Option<usize> {
-    let index = |name: &str| kbds.iter().find(|k| k["name"] == name).and_then(|k| k["active_layout_index"].as_u64());
-    match (index(device), index(reference)) {
-        (Some(d), Some(r)) if d != r => Some(d as usize),
-        _ => None,
-    }
-}
-
-/// Bring every keyboard to `device`'s layout; the reference's own event then
-/// reports the change as usual.
-fn follow(device: &str, reference: &str) -> std::io::Result<()> {
-    let reply = command("j/devices")?;
-    let v: serde_json::Value = serde_json::from_str(&reply).map_err(std::io::Error::other)?;
-    let kbds = v["keyboards"].as_array().cloned().unwrap_or_default();
-    match follow_index(&kbds, device, reference) {
-        Some(index) => switch_layout("all", index),
-        None => Ok(()),
-    }
-}
-
 /// Read the current layout, and bring `watched` in line with it.
-fn sync(watched: &str) -> std::io::Result<Snapshot> {
-    let snap = snapshot(watched)?;
+fn sync(watched: &str, preferred: &str) -> std::io::Result<Snapshot> {
+    let snap = snapshot(watched, preferred)?;
     if snap.watched_index.is_some_and(|i| i != snap.reference_index) {
         switch_layout(watched, snap.reference_index)?;
     }
@@ -153,8 +133,7 @@ impl LayoutWatcher {
     /// changes, closed windows, layout changes of the real keyboard and the
     /// socket closing are sent to `tx`.
     pub fn start(watched: &'static str, tx: Sender<Msg>) -> std::io::Result<Self> {
-        let snap = sync(watched)?;
-        let reference = snap.reference;
+        let snap = sync(watched, "")?;
         let state = Arc::new((
             Mutex::new(State { index: snap.reference_index, ..Default::default() }),
             Condvar::new(),
@@ -196,18 +175,18 @@ impl LayoutWatcher {
                 if device == watched {
                     m.lock().unwrap().seq += 1;
                     cv.notify_all();
-                } else if device == reference {
+                } else if !device.contains("virtual") {
+                    // Every keyboard keeps its own layout: Alt+Alt switches only
+                    // the one it was typed on. The current layout is that of the
+                    // keyboard switched last, as Hyprland's own layout widgets
+                    // show it.
                     // Layout names aren't indices; re-query to get the index.
-                    match sync(watched) {
+                    match sync(watched, device) {
                         Ok(snap) => {
                             m.lock().unwrap().index = snap.reference_index;
                             let _ = tx.send(Msg::LayoutChanged(snap.reference_index));
                         }
                         Err(e) => eprintln!("layout sync failed: {e}"),
-                    }
-                } else if !device.contains("virtual") {
-                    if let Err(e) = follow(device, &reference) {
-                        eprintln!("layout follow failed: {e}");
                     }
                 }
             }
@@ -244,22 +223,26 @@ impl LayoutWatcher {
 
 #[cfg(test)]
 mod tests {
-    use super::follow_index;
+    use super::pick_reference;
     use serde_json::json;
 
-    fn kbds(cornix: u64, ite: u64) -> Vec<serde_json::Value> {
-        vec![json!({"name": "ite-keyboard", "active_layout_index": ite}), json!({"name": "cornix", "active_layout_index": cornix})]
+    fn kbds() -> Vec<serde_json::Value> {
+        vec![
+            json!({"name": "hl-virtual-keyboard-fcitx5"}),
+            json!({"name": "ite-tech.-inc.-ite-device(8176)-keyboard"}),
+            json!({"name": "cornix"}),
+        ]
     }
 
     #[test]
-    fn external_keyboard_switch_is_followed() {
-        assert_eq!(follow_index(&kbds(1, 0), "cornix", "ite-keyboard"), Some(1));
-        assert_eq!(follow_index(&kbds(0, 1), "cornix", "ite-keyboard"), Some(0));
+    fn the_keyboard_switched_last_is_the_reference() {
+        assert_eq!(pick_reference(&kbds(), "cornix").unwrap()["name"], "cornix");
     }
 
     #[test]
-    fn nothing_to_follow() {
-        assert_eq!(follow_index(&kbds(1, 1), "cornix", "ite-keyboard"), None);
-        assert_eq!(follow_index(&kbds(1, 0), "gone", "ite-keyboard"), None);
+    fn falls_back_to_the_first_real_keyboard() {
+        let first = "ite-tech.-inc.-ite-device(8176)-keyboard";
+        assert_eq!(pick_reference(&kbds(), "").unwrap()["name"], first);
+        assert_eq!(pick_reference(&kbds(), "unplugged").unwrap()["name"], first);
     }
 }
