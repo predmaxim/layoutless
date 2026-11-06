@@ -31,7 +31,6 @@ physical keyboard ──evdev (read-only)──▶ layoutless daemon ──uinpu
 1. The daemon passively reads key events from your physical keyboards and keeps the physical keys of the word being typed. It never grabs the keyboard, so typing is never delayed.
 2. On a word boundary it scores the word under both layouts. It checks your learned rules first, then dictionaries, then a letter n-gram model.
 3. To correct a word it sends Backspace once per key, switches the layout with `hyprctl switchxkblayout`, and replays the same physical keys. Because the keys are the same, no character mapping is needed on output.
-4. Every keyboard keeps its own layout: Hyprland switches it (Alt+Alt) only on the keyboard it was typed on. The current layout is that of the keyboard switched last, so the bar flag and corrections follow an external keyboard too.
 
 ## Privacy and permissions
 
