@@ -104,29 +104,6 @@ fn snapshot(watched: &str) -> std::io::Result<Snapshot> {
     })
 }
 
-/// The layout to give every keyboard when `device` is on another one than the
-/// reference: a group switch (Alt+Alt) changes only the keyboard it was typed
-/// on, so with an external keyboard the reference never saw it.
-fn follow_index(kbds: &[serde_json::Value], device: &str, reference: &str) -> Option<usize> {
-    let index = |name: &str| kbds.iter().find(|k| k["name"] == name).and_then(|k| k["active_layout_index"].as_u64());
-    match (index(device), index(reference)) {
-        (Some(d), Some(r)) if d != r => Some(d as usize),
-        _ => None,
-    }
-}
-
-/// Bring every keyboard to `device`'s layout; the reference's own event then
-/// reports the change as usual.
-fn follow(device: &str, reference: &str) -> std::io::Result<()> {
-    let reply = command("j/devices")?;
-    let v: serde_json::Value = serde_json::from_str(&reply).map_err(std::io::Error::other)?;
-    let kbds = v["keyboards"].as_array().cloned().unwrap_or_default();
-    match follow_index(&kbds, device, reference) {
-        Some(index) => switch_layout("all", index),
-        None => Ok(()),
-    }
-}
-
 /// Read the current layout, and bring `watched` in line with it.
 fn sync(watched: &str) -> std::io::Result<Snapshot> {
     let snap = snapshot(watched)?;
@@ -205,10 +182,6 @@ impl LayoutWatcher {
                         }
                         Err(e) => eprintln!("layout sync failed: {e}"),
                     }
-                } else if !device.contains("virtual") {
-                    if let Err(e) = follow(device, &reference) {
-                        eprintln!("layout follow failed: {e}");
-                    }
                 }
             }
             let _ = tx.send(Msg::HyprGone);
@@ -239,27 +212,5 @@ impl LayoutWatcher {
             }
             s = cv.wait_timeout(s, deadline - now).unwrap().0;
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::follow_index;
-    use serde_json::json;
-
-    fn kbds(cornix: u64, ite: u64) -> Vec<serde_json::Value> {
-        vec![json!({"name": "ite-keyboard", "active_layout_index": ite}), json!({"name": "cornix", "active_layout_index": cornix})]
-    }
-
-    #[test]
-    fn external_keyboard_switch_is_followed() {
-        assert_eq!(follow_index(&kbds(1, 0), "cornix", "ite-keyboard"), Some(1));
-        assert_eq!(follow_index(&kbds(0, 1), "cornix", "ite-keyboard"), Some(0));
-    }
-
-    #[test]
-    fn nothing_to_follow() {
-        assert_eq!(follow_index(&kbds(1, 1), "cornix", "ite-keyboard"), None);
-        assert_eq!(follow_index(&kbds(1, 0), "gone", "ite-keyboard"), None);
     }
 }
