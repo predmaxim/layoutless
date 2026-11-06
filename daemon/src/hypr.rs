@@ -73,40 +73,56 @@ pub fn repeat_delay() -> std::io::Result<Duration> {
 }
 
 struct Snapshot {
-    /// The real keyboard the current layout is read from.
-    reference: String,
+    /// Layout index of the keyboard the current layout is read from.
     reference_index: usize,
     watched_index: Option<usize>,
 }
 
-/// Read layout indices from `hyprctl devices`.
+/// Whether someone can type on a keyboard Hyprland lists. Left out, as Omarchy's
+/// layout widget leaves them out (UNTYPED_KEYBOARDS in
+/// shell/plugins/bar/widgets/KeyboardLayoutModel.js): virtual keyboards (fcitx5's,
+/// wtype's, our own), ACPI buttons and hotkey blocks, which carry the layout list
+/// without being typed on.
+fn is_typed(name: &str) -> bool {
+    const UNTYPED_PREFIXES: [&str; 4] = ["power-button", "sleep-button", "lid-switch", "video-bus"];
+    const UNTYPED_SUFFIXES: [&str; 2] = ["-wmi-hotkeys", "-wireless-radio-control"];
+    let base = name.trim_end_matches(|c: char| c.is_ascii_digit());
+    let base = if base.len() < name.len() { base.strip_suffix('-').unwrap_or(name) } else { name };
+    !(name.contains("virtual")
+        || UNTYPED_PREFIXES.iter().any(|p| name.starts_with(p))
+        || UNTYPED_SUFFIXES.iter().any(|s| base.ends_with(s)))
+}
+
+/// The keyboard the current layout is read from, chosen as Omarchy's layout
+/// widget chooses it (selectKeyboard): the one the last layout switch named, as
+/// every keyboard keeps a layout of its own and Alt+Alt switches only the one it
+/// is typed on; before any switch, the furthest along its layout list.
 ///
-/// Don't use the keyboard flagged `main`: with fcitx5 running, `main` is its
-/// virtual keyboard, which `switchxkblayout all` doesn't touch. Don't use our
-/// own virtual keyboard either: it starts at index 0, and `switchxkblayout all
-/// next` cycles each device separately, so it can be out of sync.
-fn snapshot(watched: &str) -> std::io::Result<Snapshot> {
+/// Never the keyboard flagged `main`: with fcitx5 running, `main` is its virtual
+/// keyboard, which `switchxkblayout all` doesn't touch.
+fn pick_reference<'a>(kbds: &'a [serde_json::Value], switched: &str) -> Option<&'a serde_json::Value> {
+    let index = |k: &serde_json::Value| k["active_layout_index"].as_u64().unwrap_or(0);
+    let mut typed = kbds.iter().filter(|k| is_typed(k["name"].as_str().unwrap_or("")));
+    let named = kbds.iter().find(|k| !switched.is_empty() && k["name"] == switched && is_typed(switched));
+    named.or_else(|| typed.next().map(|first| typed.fold(first, |far, k| if index(k) > index(far) { k } else { far })))
+}
+
+/// Read layout indices from `hyprctl devices`.
+fn snapshot(watched: &str, switched: &str) -> std::io::Result<Snapshot> {
     let reply = command("j/devices")?;
     let v: serde_json::Value = serde_json::from_str(&reply).map_err(std::io::Error::other)?;
     let kbds = v["keyboards"].as_array().cloned().unwrap_or_default();
     let index = |k: &serde_json::Value| k["active_layout_index"].as_u64().unwrap_or(0) as usize;
-    let reference = kbds
-        .iter()
-        .find(|k| {
-            let name = k["name"].as_str().unwrap_or("");
-            !name.contains("virtual") && name.ends_with("keyboard")
-        })
-        .ok_or_else(|| std::io::Error::other("no real keyboard found"))?;
+    let reference = pick_reference(&kbds, switched).ok_or_else(|| std::io::Error::other("no real keyboard found"))?;
     Ok(Snapshot {
-        reference: reference["name"].as_str().unwrap_or("").to_string(),
         reference_index: index(reference),
         watched_index: kbds.iter().find(|k| k["name"] == watched).map(index),
     })
 }
 
 /// Read the current layout, and bring `watched` in line with it.
-fn sync(watched: &str) -> std::io::Result<Snapshot> {
-    let snap = snapshot(watched)?;
+fn sync(watched: &str, switched: &str) -> std::io::Result<Snapshot> {
+    let snap = snapshot(watched, switched)?;
     if snap.watched_index.is_some_and(|i| i != snap.reference_index) {
         switch_layout(watched, snap.reference_index)?;
     }
@@ -126,12 +142,11 @@ pub struct LayoutWatcher {
 
 impl LayoutWatcher {
     /// `watched` is our virtual keyboard: it is kept on the same layout as the
-    /// real keyboards, and `wait_event` waits for its layout events. Focus
-    /// changes, closed windows, layout changes of the real keyboard and the
+    /// keyboard being typed on, and `wait_event` waits for its layout events.
+    /// Focus changes, closed windows, layout changes of a real keyboard and the
     /// socket closing are sent to `tx`.
     pub fn start(watched: &'static str, tx: Sender<Msg>) -> std::io::Result<Self> {
-        let snap = sync(watched)?;
-        let reference = snap.reference;
+        let snap = sync(watched, "")?;
         let state = Arc::new((
             Mutex::new(State { index: snap.reference_index, ..Default::default() }),
             Condvar::new(),
@@ -173,9 +188,9 @@ impl LayoutWatcher {
                 if device == watched {
                     m.lock().unwrap().seq += 1;
                     cv.notify_all();
-                } else if device == reference {
+                } else if is_typed(device) {
                     // Layout names aren't indices; re-query to get the index.
-                    match sync(watched) {
+                    match sync(watched, device) {
                         Ok(snap) => {
                             m.lock().unwrap().index = snap.reference_index;
                             let _ = tx.send(Msg::LayoutChanged(snap.reference_index));
@@ -211,6 +226,44 @@ impl LayoutWatcher {
                 return false;
             }
             s = cv.wait_timeout(s, deadline - now).unwrap().0;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_typed, pick_reference};
+    use serde_json::json;
+
+    fn kbds(cornix: u64) -> Vec<serde_json::Value> {
+        vec![
+            json!({"name": "video-bus", "active_layout_index": 0}),
+            json!({"name": "hl-virtual-keyboard-fcitx5", "active_layout_index": 1}),
+            json!({"name": "ite-tech.-inc.-ite-device(8176)-keyboard", "active_layout_index": 0}),
+            json!({"name": "cornix", "active_layout_index": cornix}),
+        ]
+    }
+
+    #[test]
+    fn the_keyboard_switched_last_is_read() {
+        assert_eq!(pick_reference(&kbds(0), "cornix").unwrap()["name"], "cornix");
+    }
+
+    #[test]
+    fn before_a_switch_the_furthest_along_is_read() {
+        assert_eq!(pick_reference(&kbds(1), "").unwrap()["name"], "cornix");
+        assert_eq!(pick_reference(&kbds(0), "").unwrap()["name"], "ite-tech.-inc.-ite-device(8176)-keyboard");
+        assert_eq!(pick_reference(&kbds(1), "unplugged").unwrap()["name"], "cornix");
+    }
+
+    #[test]
+    fn untyped_keyboards_are_never_read() {
+        assert_eq!(pick_reference(&kbds(0), "hl-virtual-keyboard-fcitx5").unwrap()["name"], "ite-tech.-inc.-ite-device(8176)-keyboard");
+        for name in ["power-button-1", "video-bus", "layoutless-virtual-keyboard", "ite-tech.-inc.-ite-device(8176)-wireless-radio-control", "dell-wmi-hotkeys-2"] {
+            assert!(!is_typed(name), "{name}");
+        }
+        for name in ["cornix", "at-translated-set-2-keyboard", "cornix-consumer-control"] {
+            assert!(is_typed(name), "{name}");
         }
     }
 }
